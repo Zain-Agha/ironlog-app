@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom'; // <--- IMPORT THIS
 import RoutineManager from './RoutineManager';
 import ScheduleEditor from './ScheduleEditor';
 import ExerciseBuilder from './ExerciseBuilder';
@@ -137,7 +138,6 @@ export default function ProfileView() {
   if (!user) return null;
 
   return (
-    // FIX 1: Changed 'p-4' to 'px-4 pt-14' to clear the top Notch/Dynamic Island
     <div className="px-4 pt-14 pb-32 space-y-6">
       <header>
         <h1 className="text-3xl font-black text-white italic tracking-tighter">
@@ -235,10 +235,9 @@ export default function ProfileView() {
         </div>
       )}
 
-      {/* IOS INSTALL GUIDE */}
-      {showIOSGuide && (
-        // FIX 2: Added 'pb-10' to lift the modal above the bottom Home Indicator bar
-        <div className="fixed inset-0 z-[110] bg-black/95 flex items-end sm:items-center justify-center p-4 pb-12 backdrop-blur-md animate-in slide-in-from-bottom duration-300" onClick={() => setShowIOSGuide(false)}>
+      {/* IOS INSTALL GUIDE - NOW USING A PORTAL TO SIT ON TOP OF EVERYTHING */}
+      {showIOSGuide && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-black/95 flex items-end sm:items-center justify-center p-4 pb-12 backdrop-blur-md animate-in slide-in-from-bottom duration-300" onClick={() => setShowIOSGuide(false)}>
             <div className="bg-zinc-900 border border-zinc-800 w-full max-w-sm p-6 rounded-3xl space-y-6 shadow-2xl relative" onClick={e => e.stopPropagation()}>
                 
                 <button onClick={() => setShowIOSGuide(false)} className="absolute top-4 right-4 p-2 bg-zinc-800 rounded-full text-zinc-400 font-bold text-xs hover:bg-zinc-700">✕</button>
@@ -282,7 +281,8 @@ export default function ProfileView() {
                     </div>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body // <--- RENDER ON BODY
       )}
     </div>
   );
