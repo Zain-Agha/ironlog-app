@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import RoutineManager from './RoutineManager';
 import ScheduleEditor from './ScheduleEditor';
 import ExerciseBuilder from './ExerciseBuilder';
@@ -19,7 +19,52 @@ export default function ProfileView() {
   const [showWeightInput, setShowWeightInput] = useState(false);
   const [showQR, setShowQR] = useState(false);
 
+  // --- PWA INSTALL STATE ---
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [showIOSGuide, setShowIOSGuide] = useState(false);
+
   const user = profile?.[0];
+
+  // --- PWA LOGIC ---
+  useEffect(() => {
+    // 1. Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+        setIsStandalone(true);
+    }
+
+    // 2. Listen for Android Install Event
+    const handleBeforeInstallPrompt = (e: any) => {
+        e.preventDefault();
+        setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // 3. Detect iOS
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    setIsIOS(/iphone|ipad|ipod/.test(userAgent));
+
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallClick = () => {
+    if (installPrompt) {
+        // Android: Trigger native popup
+        installPrompt.prompt();
+        installPrompt.userChoice.then((choiceResult: any) => {
+            if (choiceResult.outcome === 'accepted') {
+                setInstallPrompt(null);
+            }
+        });
+    } else if (isIOS) {
+        // iOS: Show instructions
+        setShowIOSGuide(true);
+    } else {
+        // Fallback or Desktop
+        alert("To install: Look for the 'Add to Home Screen' icon in your browser menu.");
+    }
+  };
 
   const handleWeightCheckin = async () => {
     if (!newWeight || !user?.id) return;
@@ -202,7 +247,18 @@ export default function ProfileView() {
         <span className="text-zinc-500 text-lg">›</span>
       </button>
 
-      {/* 4. DATA & SHARE */}
+      {/* 4. INSTALL APP BANNER (Only shows if not installed) */}
+      {!isStandalone && (installPrompt || isIOS) && (
+        <button 
+            onClick={handleInstallClick}
+            className="w-full p-6 bg-gradient-to-r from-emerald-600 to-teal-700 rounded-3xl text-white font-black uppercase tracking-widest shadow-xl shadow-emerald-900/20 active:scale-95 transition-transform flex items-center justify-center gap-3 animate-pulse"
+        >
+            <span className="text-2xl">📲</span>
+            Install App
+        </button>
+      )}
+
+      {/* 5. DATA & SHARE */}
       <div className="grid grid-cols-2 gap-3 pt-6 border-t border-white/5">
         <button onClick={handleExport} className="p-4 bg-black/40 border border-zinc-800/50 rounded-xl font-bold text-xs text-zinc-400 hover:text-white hover:border-violet-500/30 transition-colors flex flex-col items-center gap-2">
             <span className="text-xl">📤</span> Backup Data
@@ -214,7 +270,7 @@ export default function ProfileView() {
       </div>
 
       <button onClick={() => setShowQR(true)} className="w-full p-4 bg-violet-900/10 border border-violet-500/20 rounded-xl font-bold text-xs text-violet-300 flex justify-center items-center gap-2 hover:bg-violet-900/20 transition-colors">
-        <span className="text-lg">📱</span> Share App Link
+        <span className="text-lg">📱</span> Show Share Code
       </button>
 
       <button onClick={handleFactoryReset} className="w-full p-4 border border-red-900/30 text-red-500 rounded-xl font-bold text-[10px] uppercase tracking-widest bg-red-950/5 hover:bg-red-950/20 mt-4 transition-colors">
@@ -230,6 +286,7 @@ export default function ProfileView() {
         <ExerciseBuilder onClose={() => setShowExLibrary(false)} />
       )}
       
+      {/* QR MODAL */}
       {showQR && (
         <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-6 backdrop-blur-md" onClick={() => setShowQR(false)}>
             <div className="bg-white p-6 rounded-3xl flex flex-col items-center gap-4 shadow-2xl shadow-violet-500/20" onClick={e => e.stopPropagation()}>
@@ -238,6 +295,38 @@ export default function ProfileView() {
                     <QRCodeSVG value={window.location.href} size={180} />
                 </div>
                 <button onClick={() => setShowQR(false)} className="text-zinc-500 font-bold mt-2 text-sm">Close</button>
+            </div>
+        </div>
+      )}
+
+      {/* IOS INSTALL INSTRUCTIONS MODAL */}
+      {showIOSGuide && (
+        <div className="fixed inset-0 z-[110] bg-black/95 flex flex-col justify-end pb-10 px-4 backdrop-blur-md animate-in slide-in-from-bottom" onClick={() => setShowIOSGuide(false)}>
+            <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl space-y-4" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center">
+                    <h3 className="text-white font-bold text-lg">Install on iPhone</h3>
+                    <button onClick={() => setShowIOSGuide(false)} className="text-zinc-500 font-bold">Close</button>
+                </div>
+                <div className="space-y-4">
+                    <div className="flex items-center gap-4 text-zinc-300">
+                        <span className="w-8 h-8 flex items-center justify-center bg-zinc-800 rounded-full font-bold">1</span>
+                        <span>Tap the <strong className="text-white">Share</strong> button below.</span>
+                    </div>
+                    <div className="flex justify-center py-2">
+                         {/* Generic Share Icon Representation */}
+                         <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+                    </div>
+                    <div className="flex items-center gap-4 text-zinc-300">
+                        <span className="w-8 h-8 flex items-center justify-center bg-zinc-800 rounded-full font-bold">2</span>
+                        <span>Scroll down and tap <strong className="text-white">Add to Home Screen</strong>.</span>
+                    </div>
+                    <div className="flex justify-center py-2">
+                         <div className="bg-zinc-800 px-3 py-1 rounded flex items-center gap-2">
+                            <span className="text-xl">⊞</span>
+                            <span className="text-xs font-bold text-white">Add to Home Screen</span>
+                         </div>
+                    </div>
+                </div>
             </div>
         </div>
       )}
