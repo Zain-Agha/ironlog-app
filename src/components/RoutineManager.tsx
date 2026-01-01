@@ -16,13 +16,11 @@ const ExercisePicker = ({
   const [step, setStep] = useState<'select' | 'configure' | 'create'>('select');
   const [selectedEx, setSelectedEx] = useState<Exercise | null>(null);
   
-  // Configure Targets State
-  const [tSets, setTSets] = useState('1'); // Default 1 set for cardio
-  const [tReps, setTReps] = useState('10'); // Used for Reps OR Time
-  const [tWeight, setTWeight] = useState('0'); // Used for Weight OR Incline
-  const [tSpeed, setTSpeed] = useState('0'); // NEW: Speed
+  const [tSets, setTSets] = useState('1'); 
+  const [tReps, setTReps] = useState('10'); 
+  const [tWeight, setTWeight] = useState('0'); 
+  const [tSpeed, setTSpeed] = useState('0'); 
 
-  // Create New Ex State
   const [newName, setNewName] = useState('');
   const [newCat, setNewCat] = useState<'strength' | 'cardio' | 'isometric'>('strength');
 
@@ -78,7 +76,6 @@ const ExercisePicker = ({
       </div>
   );
 
-  // CONFIGURE TARGETS
   const isCardio = selectedEx?.category === 'cardio';
   const isIso = selectedEx?.category === 'isometric';
 
@@ -88,26 +85,22 @@ const ExercisePicker = ({
           <p className="text-zinc-500 text-sm mb-6">Set your targets for this routine.</p>
           
           <div className="space-y-4">
-              {/* Sets */}
               <div>
                   <label className="text-xs font-bold text-zinc-500 uppercase">Target Sets</label>
                   <input type="number" value={tSets} onChange={e => setTSets(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white font-bold mt-1" />
               </div>
               
               <div className="flex gap-4">
-                  {/* Weight / Incline */}
                   <div className="flex-1">
                       <label className="text-xs font-bold text-zinc-500 uppercase">{isCardio ? 'Incline (Level)' : 'Weight (kg)'}</label>
                       <input type="number" value={tWeight} onChange={e => setTWeight(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white font-bold mt-1" />
                   </div>
-                  {/* Reps / Time */}
                   <div className="flex-1">
                       <label className="text-xs font-bold text-zinc-500 uppercase">{isCardio ? 'Time (min)' : isIso ? 'Time (sec)' : 'Reps'}</label>
                       <input type="number" value={tReps} onChange={e => setTReps(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white font-bold mt-1" />
                   </div>
               </div>
 
-              {/* SPECIAL INPUT FOR CARDIO SPEED */}
               {isCardio && (
                   <div>
                       <label className="text-xs font-bold text-zinc-500 uppercase">Speed (km/h)</label>
@@ -136,15 +129,12 @@ export default function RoutineManager({ onClose }: { onClose: () => void }) {
   const [view, setView] = useState<'list' | 'create' | 'edit'>('list');
   const [editingRoutineId, setEditingRoutineId] = useState<number | null>(null);
   
-  // Form State
   const [rName, setRName] = useState('');
   const [rElements, setRElements] = useState<RoutineElement[]>([]);
   const [showExPicker, setShowExPicker] = useState(false);
 
-  // --- ACTIONS ---
   const handleSave = async () => {
     if (!rName) return alert("Routine name is required");
-    
     try {
         if (editingRoutineId) {
             await db.routines.update(editingRoutineId, { name: rName, elements: rElements });
@@ -154,18 +144,12 @@ export default function RoutineManager({ onClose }: { onClose: () => void }) {
         resetForm();
     } catch (error) {
         console.error("SAVE ERROR:", error);
-        alert("Failed to save routine. See console.");
+        alert("Failed to save routine.");
     }
   };
 
   const handleDeleteRoutine = async (id: number) => {
-    if(confirm("Delete this routine?")) {
-        try {
-            await db.routines.delete(id);
-        } catch(e) {
-            console.error("Failed to delete", e);
-        }
-    }
+    if(confirm("Delete this routine?")) await db.routines.delete(id);
   };
 
   const resetForm = () => {
@@ -180,76 +164,95 @@ export default function RoutineManager({ onClose }: { onClose: () => void }) {
   };
 
   const addExerciseToRoutine = (exercise: Exercise, sets: number, reps: number, weight: number, speed?: number) => {
-    // We store extra cardio data in the object. Dexie allows this flexible structure.
     const newElement: RoutineElement & { targetSpeed?: number } = {
         exerciseId: exercise.id!,
         targetSets: sets,
-        targetReps: reps, // Duration for Cardio
-        targetWeight: weight, // Incline for Cardio
-        targetSpeed: speed // Speed for Cardio (New Field)
+        targetReps: reps,
+        targetWeight: weight,
+        targetSpeed: speed
     };
-    
     setRElements([...rElements, newElement]);
     setShowExPicker(false);
   };
 
-  // --- PORTAL RENDER ---
   return createPortal(
-    <div className="fixed inset-0 z-[9000] bg-zinc-950 flex flex-col px-4 pt-14 pb-10 animate-in fade-in">
-        <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-black text-white italic">ROUTINE<span className="text-green-500">MANAGER</span></h2>
+    <div className="fixed inset-0 z-[9000] bg-zinc-950 flex flex-col overflow-hidden">
+        
+        {/* HEADER: Stays at top */}
+        <div className="px-4 pt-14 pb-4 flex justify-between items-center border-b border-zinc-900 bg-zinc-950">
+            <h2 className="text-2xl font-black text-white italic tracking-tighter">ROUTINE<span className="text-green-500">MANAGER</span></h2>
             <button onClick={onClose} className="text-zinc-500 font-bold p-2">Done</button>
         </div>
 
-        {view === 'list' && (
-            <div className="flex-1 overflow-y-auto space-y-3 pb-32">
-                <button onClick={() => setView('create')} className="w-full p-4 bg-green-500 text-black font-black uppercase tracking-wider rounded-xl mb-4">+ Create New Routine</button>
-                {routines?.map(r => (
-                    <div key={r.id} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 flex justify-between items-center">
-                        <div><div className="font-bold text-white text-lg">{r.name}</div><div className="text-xs text-zinc-500">{r.elements?.length || 0} Exercises</div></div>
-                        <div className="flex gap-2"><button onClick={() => startEdit(r)} className="px-3 py-2 bg-zinc-800 text-zinc-300 text-xs font-bold rounded-lg">Edit</button><button onClick={() => handleDeleteRoutine(r.id!)} className="px-3 py-2 bg-red-900/20 text-red-500 text-xs font-bold rounded-lg">Del</button></div>
-                    </div>
-                ))}
-            </div>
-        )}
-
-        {(view === 'create' || view === 'edit') && (
-            <div className="flex-1 flex flex-col">
-                <input value={rName} onChange={e => setRName(e.target.value)} placeholder="Routine Name (e.g. Chest A)" className="w-full bg-zinc-900 p-4 rounded-xl text-xl font-bold text-white mb-4 outline-none border border-transparent focus:border-green-500" />
-                
-                <div className="flex-1 overflow-y-auto space-y-2 mb-4 pb-10">
-                    {rElements.map((el, idx) => {
-                        const ex = allExercises?.find(e => e.id === el.exerciseId);
-                        const exName = ex?.name || 'Unknown';
-                        const isIso = ex?.category === 'isometric';
-                        const isCardio = ex?.category === 'cardio';
-                        
-                        // Display logic for list
-                        let detailText = `Target: ${el.targetSets} x ${el.targetWeight}kg / ${el.targetReps} reps`;
-                        if (isCardio) {
-                            const speedText = (el as any).targetSpeed ? `@ ${(el as any).targetSpeed}km/h` : '';
-                            detailText = `${el.targetReps} mins ${speedText} (Incline ${el.targetWeight})`;
-                        } else if (isIso) {
-                            detailText = `Hold: ${el.targetReps} sec (x${el.targetSets})`;
-                        }
-
-                        return (
-                            <div key={idx} className="flex justify-between items-center bg-zinc-900/50 p-3 rounded-lg border border-zinc-800/50">
-                                <div>
-                                    <div className="text-zinc-300 font-bold">{exName}</div>
-                                    <div className="text-xs text-zinc-500">{detailText}</div>
-                                </div>
-                                <button onClick={() => setRElements(rElements.filter((_, i) => i !== idx))} className="text-red-500 text-xs font-bold">✕</button>
+        {/* CONTENT AREA */}
+        <div className="flex-1 overflow-y-auto min-h-0 px-4 pt-4 scrollbar-hide">
+            {view === 'list' && (
+                <div className="space-y-3 pb-32">
+                    <button onClick={() => setView('create')} className="w-full p-4 bg-green-500 text-black font-black uppercase tracking-wider rounded-xl mb-4 shadow-lg shadow-green-900/20 active:scale-95 transition-transform">+ Create New Routine</button>
+                    {routines?.map(r => (
+                        <div key={r.id} className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800 flex justify-between items-center">
+                            <div><div className="font-bold text-white text-lg">{r.name}</div><div className="text-xs text-zinc-500">{r.elements?.length || 0} Exercises</div></div>
+                            <div className="flex gap-2">
+                                <button onClick={() => startEdit(r)} className="px-4 py-2 bg-zinc-800 text-zinc-300 text-xs font-bold rounded-xl border border-zinc-700">Edit</button>
+                                <button onClick={() => handleDeleteRoutine(r.id!)} className="px-4 py-2 bg-red-950/30 text-red-500 text-xs font-bold rounded-xl border border-red-900/20">Del</button>
                             </div>
-                        )
-                    })}
-                    <button onClick={() => setShowExPicker(true)} className="w-full py-3 border border-zinc-800 border-dashed text-zinc-500 rounded-lg text-sm font-bold">+ Add Exercise</button>
+                        </div>
+                    ))}
                 </div>
+            )}
 
-                {/* Bottom Buttons with Bottom Padding Buffer */}
-                <div className="flex gap-3 mb-10 mt-auto pt-4 border-t border-zinc-900">
-                    <button onClick={resetForm} className="flex-1 py-4 bg-zinc-900 text-zinc-400 font-bold rounded-xl">Cancel</button>
-                    <button onClick={handleSave} className="flex-1 py-4 bg-green-500 text-black font-bold rounded-xl">Save Routine</button>
+            {(view === 'create' || view === 'edit') && (
+                <div className="flex flex-col pb-32">
+                    <input 
+                        value={rName} 
+                        onChange={e => setRName(e.target.value)} 
+                        placeholder="Routine Name (e.g. Legs & Push)" 
+                        className="w-full bg-zinc-900 p-4 rounded-2xl text-xl font-bold text-white mb-6 outline-none border border-zinc-800 focus:border-green-500 transition-colors" 
+                    />
+                    
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center mb-2 px-1">
+                            <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Exercises</span>
+                            <span className="text-xs font-bold text-green-500 bg-green-500/10 px-2 py-1 rounded">{rElements.length} Total</span>
+                        </div>
+
+                        {rElements.map((el, idx) => {
+                            const ex = allExercises?.find(e => e.id === el.exerciseId);
+                            const exName = ex?.name || 'Unknown';
+                            const isIso = ex?.category === 'isometric';
+                            const isCardio = ex?.category === 'cardio';
+                            
+                            let detailText = `${el.targetSets} sets × ${el.targetReps} reps @ ${el.targetWeight}kg`;
+                            if (isCardio) {
+                                const speedText = (el as any).targetSpeed ? `@ ${(el as any).targetSpeed}km/h` : '';
+                                detailText = `${el.targetReps} mins ${speedText} (Incline ${el.targetWeight})`;
+                            } else if (isIso) {
+                                detailText = `${el.targetReps}s hold × ${el.targetSets} sets`;
+                            }
+
+                            return (
+                                <div key={idx} className="flex justify-between items-center bg-zinc-900/30 p-4 rounded-2xl border border-zinc-800/50">
+                                    <div className="flex-1">
+                                        <div className="text-zinc-200 font-bold">{exName}</div>
+                                        <div className="text-[10px] text-zinc-500 font-bold uppercase mt-0.5 tracking-tight">{detailText}</div>
+                                    </div>
+                                    <button onClick={() => setRElements(rElements.filter((_, i) => i !== idx))} className="ml-4 w-8 h-8 flex items-center justify-center bg-zinc-800 rounded-full text-zinc-500 text-xs font-bold hover:text-red-500 transition-colors">✕</button>
+                                </div>
+                            )
+                        })}
+                        
+                        <button onClick={() => setShowExPicker(true)} className="w-full py-4 border-2 border-zinc-800 border-dashed text-zinc-500 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-zinc-900/30 transition-colors">+ Add Exercise</button>
+                    </div>
+                </div>
+            )}
+        </div>
+
+        {/* FOOTER: Stays locked at bottom */}
+        {(view === 'create' || view === 'edit') && (
+            <div className="px-4 pb-10 pt-4 bg-zinc-950 border-t border-zinc-900 shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
+                <div className="flex gap-3">
+                    <button onClick={resetForm} className="flex-1 py-4 bg-zinc-900 text-zinc-400 font-black uppercase tracking-widest rounded-2xl border border-zinc-800">Cancel</button>
+                    <button onClick={handleSave} className="flex-1 py-4 bg-green-500 text-black font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-green-900/20 active:scale-95 transition-transform">Save Routine</button>
                 </div>
             </div>
         )}
