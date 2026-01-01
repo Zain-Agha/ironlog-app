@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'; // <--- FIXED: Removed useMemo
+import { useState, useEffect } from 'react';
 import Layout from './components/Layout';
 import ExerciseLogger from './components/ExerciseLogger';
 import AnalyticsView from './components/AnalyticsView'; 
@@ -80,9 +80,13 @@ function App() {
   if (profile.length === 0 || !profile[0].onboardingComplete) return <Onboarding onComplete={() => window.location.reload()} />;
 
   const isToday = activeDate.toDateString() === new Date().toDateString();
+  
+  // FIX: Removed the double arrow typo (r => r.id => r.id)
   const activeRoutine = (!isToday && recalibratedRoutine) 
     ? recalibratedRoutine 
-    : (schedule?.find(s => s.dayIndex === activeDate.getDay())?.routineId ? routines?.find(r => r.id === schedule?.find(s => s.dayIndex === activeDate.getDay())?.routineId) : null);
+    : (schedule?.find(s => s.dayIndex === activeDate.getDay())?.routineId 
+        ? routines?.find(r => r.id === schedule?.find(s => s.dayIndex === activeDate.getDay())?.routineId) 
+        : null);
 
   const displayExercises = activeRoutine
     ? allExercises.filter(ex => activeRoutine.elements?.some(el => el.exerciseId === ex.id))
@@ -96,7 +100,9 @@ function App() {
         <AnimatePresence mode="wait">
           {activeTab === 'workout' && (
             <motion.div key="workout" variants={pageVariants} initial="initial" animate="enter" exit="exit" className="pb-32">
-              <header className="p-4 pt-8">
+              
+              {/* FIX: Increased top padding to 'pt-16' to clear the Notch/Dynamic Island */}
+              <header className="px-4 pt-16 pb-4">
                 <div className="flex justify-between items-start">
                     <h1 className="text-4xl font-black tracking-tighter text-white italic">IRON<span className="text-emerald-500">LOG</span></h1>
                     <button onClick={() => setShowSchedule(true)} className="flex flex-col items-center bg-zinc-900 border border-zinc-800 p-2 rounded-lg active:scale-95 transition-transform"><span className="text-xl">📅</span><span className="text-[9px] font-bold text-zinc-400 uppercase">Week</span></button>
@@ -141,6 +147,21 @@ function App() {
                         const setsDone = selectedDateSets?.filter(s => s.exerciseId === exercise.id).length || 0;
                         const isComplete = target && setsDone >= target.targetSets;
 
+                        // FIX: Added Logic for Cardio Speed AND Incline
+                        let goalText = '';
+                        if (target) {
+                             if (exercise.category === 'cardio') {
+                                 // Safely access targetSpeed and Incline (targetWeight)
+                                 const speed = (target as any).targetSpeed ? `@ ${(target as any).targetSpeed}km/h` : '';
+                                 const incline = target.targetWeight > 0 ? `(Inc ${target.targetWeight})` : '';
+                                 goalText = `Goal: ${target.targetReps} min ${speed} ${incline}`;
+                             } else if (exercise.category === 'isometric') {
+                                 goalText = `Goal: ${target.targetReps}s Hold`;
+                             } else {
+                                 goalText = `Goal: ${target.targetWeight > 0 ? `${target.targetWeight}kg` : 'BW'} × ${target.targetReps}`;
+                             }
+                        }
+
                         return (
                             <Card 
                                 key={exercise.id} 
@@ -159,7 +180,7 @@ function App() {
                                         <span className="text-xs bg-zinc-900 text-zinc-500 font-bold px-2 py-1 rounded border border-zinc-800">{exercise.targetMuscle}</span>
                                         {target && (
                                             <>
-                                                <span className="text-xs bg-zinc-800 text-zinc-300 font-bold px-2 py-1 rounded border border-zinc-700">Goal: {target.targetWeight > 0 ? `${target.targetWeight}kg` : 'BW'} × {target.targetReps}</span>
+                                                <span className="text-xs bg-zinc-800 text-zinc-300 font-bold px-2 py-1 rounded border border-zinc-700">{goalText}</span>
                                                 <span className={`text-xs font-bold px-2 py-1 rounded border ${isComplete ? 'border-emerald-500 text-emerald-500' : 'border-zinc-700 text-zinc-500'}`}>{setsDone} / {target.targetSets} Sets</span>
                                             </>
                                         )}

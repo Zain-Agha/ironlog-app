@@ -180,7 +180,8 @@ export default function AnalyticsView() {
   const inactiveBtn = "text-zinc-500 hover:text-zinc-300";
 
   return (
-    <div className="p-4 space-y-6 pb-32">
+    // FIX: CHANGED from 'p-4' to 'p-4 pt-16' to clear Dynamic Island/Notch
+    <div className="p-4 pt-16 space-y-6 pb-32">
       {/* HEADER & TOGGLE */}
       <header className="flex flex-col gap-4 pt-4">
         <div className="flex justify-between items-center">

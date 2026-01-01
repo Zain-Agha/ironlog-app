@@ -11,15 +11,16 @@ const ExercisePicker = ({
 }: { 
   allExercises: Exercise[] | undefined; 
   onCancel: () => void; 
-  onAdd: (exercise: Exercise, sets: number, reps: number, weight: number) => void;
+  onAdd: (exercise: Exercise, sets: number, reps: number, weight: number, speed?: number) => void;
 }) => {
   const [step, setStep] = useState<'select' | 'configure' | 'create'>('select');
   const [selectedEx, setSelectedEx] = useState<Exercise | null>(null);
   
   // Configure Targets State
-  const [tSets, setTSets] = useState('3');
-  const [tReps, setTReps] = useState('10');
-  const [tWeight, setTWeight] = useState('0');
+  const [tSets, setTSets] = useState('1'); // Default 1 set for cardio
+  const [tReps, setTReps] = useState('10'); // Used for Reps OR Time
+  const [tWeight, setTWeight] = useState('0'); // Used for Weight OR Incline
+  const [tSpeed, setTSpeed] = useState('0'); // NEW: Speed
 
   // Create New Ex State
   const [newName, setNewName] = useState('');
@@ -79,7 +80,7 @@ const ExercisePicker = ({
 
   // CONFIGURE TARGETS
   const isCardio = selectedEx?.category === 'cardio';
-  const isIso = selectedEx?.category === 'isometric'; // <--- NEW CHECK
+  const isIso = selectedEx?.category === 'isometric';
 
   return (
       <div className="fixed inset-0 z-[9100] bg-black/95 flex flex-col p-6 justify-center">
@@ -94,20 +95,28 @@ const ExercisePicker = ({
               </div>
               
               <div className="flex gap-4">
+                  {/* Weight / Incline */}
                   <div className="flex-1">
-                      {/* LABEL LOGIC: Cardio=Dist, Iso/Str=Weight */}
-                      <label className="text-xs font-bold text-zinc-500 uppercase">{isCardio ? 'Distance (km)' : 'Weight (kg)'}</label>
+                      <label className="text-xs font-bold text-zinc-500 uppercase">{isCardio ? 'Incline (Level)' : 'Weight (kg)'}</label>
                       <input type="number" value={tWeight} onChange={e => setTWeight(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white font-bold mt-1" />
                   </div>
+                  {/* Reps / Time */}
                   <div className="flex-1">
-                      {/* LABEL LOGIC: Cardio=Time, Iso=Time, Str=Reps */}
                       <label className="text-xs font-bold text-zinc-500 uppercase">{isCardio ? 'Time (min)' : isIso ? 'Time (sec)' : 'Reps'}</label>
                       <input type="number" value={tReps} onChange={e => setTReps(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white font-bold mt-1" />
                   </div>
               </div>
 
+              {/* SPECIAL INPUT FOR CARDIO SPEED */}
+              {isCardio && (
+                  <div>
+                      <label className="text-xs font-bold text-zinc-500 uppercase">Speed (km/h)</label>
+                      <input type="number" value={tSpeed} onChange={e => setTSpeed(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white font-bold mt-1" />
+                  </div>
+              )}
+
               <button 
-                  onClick={() => onAdd(selectedEx!, Number(tSets), Number(tReps), Number(tWeight))}
+                  onClick={() => onAdd(selectedEx!, Number(tSets), Number(tReps), Number(tWeight), Number(tSpeed))}
                   className="w-full bg-green-500 text-black font-bold py-4 rounded-xl mt-4"
               >
                   Add to Routine
@@ -170,19 +179,23 @@ export default function RoutineManager({ onClose }: { onClose: () => void }) {
     setView('edit');
   };
 
-  const addExerciseToRoutine = (exercise: Exercise, sets: number, reps: number, weight: number) => {
-    setRElements([...rElements, {
+  const addExerciseToRoutine = (exercise: Exercise, sets: number, reps: number, weight: number, speed?: number) => {
+    // We store extra cardio data in the object. Dexie allows this flexible structure.
+    const newElement: RoutineElement & { targetSpeed?: number } = {
         exerciseId: exercise.id!,
         targetSets: sets,
-        targetReps: reps,
-        targetWeight: weight
-    }]);
+        targetReps: reps, // Duration for Cardio
+        targetWeight: weight, // Incline for Cardio
+        targetSpeed: speed // Speed for Cardio (New Field)
+    };
+    
+    setRElements([...rElements, newElement]);
     setShowExPicker(false);
   };
 
   // --- PORTAL RENDER ---
   return createPortal(
-    <div className="fixed inset-0 z-[9000] bg-zinc-950 flex flex-col p-4 animate-in fade-in">
+    <div className="fixed inset-0 z-[9000] bg-zinc-950 flex flex-col px-4 pt-14 pb-10 animate-in fade-in">
         <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-black text-white italic">ROUTINE<span className="text-green-500">MANAGER</span></h2>
             <button onClick={onClose} className="text-zinc-500 font-bold p-2">Done</button>
@@ -210,14 +223,21 @@ export default function RoutineManager({ onClose }: { onClose: () => void }) {
                         const exName = ex?.name || 'Unknown';
                         const isIso = ex?.category === 'isometric';
                         const isCardio = ex?.category === 'cardio';
+                        
+                        // Display logic for list
+                        let detailText = `Target: ${el.targetSets} x ${el.targetWeight}kg / ${el.targetReps} reps`;
+                        if (isCardio) {
+                            const speedText = (el as any).targetSpeed ? `@ ${(el as any).targetSpeed}km/h` : '';
+                            detailText = `${el.targetReps} mins ${speedText} (Incline ${el.targetWeight})`;
+                        } else if (isIso) {
+                            detailText = `Hold: ${el.targetReps} sec (x${el.targetSets})`;
+                        }
 
                         return (
                             <div key={idx} className="flex justify-between items-center bg-zinc-900/50 p-3 rounded-lg border border-zinc-800/50">
                                 <div>
                                     <div className="text-zinc-300 font-bold">{exName}</div>
-                                    <div className="text-xs text-zinc-500">
-                                        Target: {el.targetSets} x {el.targetWeight > 0 ? `${el.targetWeight}kg` : 'BW'} / {el.targetReps} {isCardio ? 'min' : isIso ? 'sec' : 'reps'}
-                                    </div>
+                                    <div className="text-xs text-zinc-500">{detailText}</div>
                                 </div>
                                 <button onClick={() => setRElements(rElements.filter((_, i) => i !== idx))} className="text-red-500 text-xs font-bold">✕</button>
                             </div>
