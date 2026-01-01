@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { createPortal } from 'react-dom'; // <--- PORTAL IMPORT
+import { createPortal } from 'react-dom'; 
 import { db, type Exercise, type Routine, type RoutineElement } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 
 // --- EXTRACTED COMPONENT ---
-// Updated with High Z-Index to sit on top of RoutineManager
 const ExercisePicker = ({ 
   allExercises, 
   onCancel, 
@@ -80,6 +79,8 @@ const ExercisePicker = ({
 
   // CONFIGURE TARGETS
   const isCardio = selectedEx?.category === 'cardio';
+  const isIso = selectedEx?.category === 'isometric'; // <--- NEW CHECK
+
   return (
       <div className="fixed inset-0 z-[9100] bg-black/95 flex flex-col p-6 justify-center">
           <h3 className="font-bold text-white text-xl mb-2">{selectedEx?.name}</h3>
@@ -94,11 +95,13 @@ const ExercisePicker = ({
               
               <div className="flex gap-4">
                   <div className="flex-1">
+                      {/* LABEL LOGIC: Cardio=Dist, Iso/Str=Weight */}
                       <label className="text-xs font-bold text-zinc-500 uppercase">{isCardio ? 'Distance (km)' : 'Weight (kg)'}</label>
                       <input type="number" value={tWeight} onChange={e => setTWeight(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white font-bold mt-1" />
                   </div>
                   <div className="flex-1">
-                      <label className="text-xs font-bold text-zinc-500 uppercase">{isCardio ? 'Time (min)' : 'Reps'}</label>
+                      {/* LABEL LOGIC: Cardio=Time, Iso=Time, Str=Reps */}
+                      <label className="text-xs font-bold text-zinc-500 uppercase">{isCardio ? 'Time (min)' : isIso ? 'Time (sec)' : 'Reps'}</label>
                       <input type="number" value={tReps} onChange={e => setTReps(e.target.value)} className="w-full bg-zinc-900 p-3 rounded-xl text-white font-bold mt-1" />
                   </div>
               </div>
@@ -134,8 +137,6 @@ export default function RoutineManager({ onClose }: { onClose: () => void }) {
     if (!rName) return alert("Routine name is required");
     
     try {
-        console.log("Saving Routine:", { name: rName, elements: rElements });
-        
         if (editingRoutineId) {
             await db.routines.update(editingRoutineId, { name: rName, elements: rElements });
         } else {
@@ -205,13 +206,17 @@ export default function RoutineManager({ onClose }: { onClose: () => void }) {
                 
                 <div className="flex-1 overflow-y-auto space-y-2 mb-4 pb-10">
                     {rElements.map((el, idx) => {
-                        const exName = allExercises?.find(e => e.id === el.exerciseId)?.name || 'Unknown';
+                        const ex = allExercises?.find(e => e.id === el.exerciseId);
+                        const exName = ex?.name || 'Unknown';
+                        const isIso = ex?.category === 'isometric';
+                        const isCardio = ex?.category === 'cardio';
+
                         return (
                             <div key={idx} className="flex justify-between items-center bg-zinc-900/50 p-3 rounded-lg border border-zinc-800/50">
                                 <div>
                                     <div className="text-zinc-300 font-bold">{exName}</div>
                                     <div className="text-xs text-zinc-500">
-                                        Target: {el.targetSets} x {el.targetWeight > 0 ? `${el.targetWeight}kg` : 'BW'} / {el.targetReps} reps
+                                        Target: {el.targetSets} x {el.targetWeight > 0 ? `${el.targetWeight}kg` : 'BW'} / {el.targetReps} {isCardio ? 'min' : isIso ? 'sec' : 'reps'}
                                     </div>
                                 </div>
                                 <button onClick={() => setRElements(rElements.filter((_, i) => i !== idx))} className="text-red-500 text-xs font-bold">✕</button>
@@ -237,6 +242,6 @@ export default function RoutineManager({ onClose }: { onClose: () => void }) {
             />
         )}
     </div>,
-    document.body // <--- RENDER OUTSIDE THE LAYOUT STACK
+    document.body 
   );
 }
