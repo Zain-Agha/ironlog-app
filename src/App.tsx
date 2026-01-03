@@ -81,7 +81,6 @@ function App() {
 
   const isToday = activeDate.toDateString() === new Date().toDateString();
   
-  // FIX: Removed the double arrow typo (r => r.id => r.id)
   const activeRoutine = (!isToday && recalibratedRoutine) 
     ? recalibratedRoutine 
     : (schedule?.find(s => s.dayIndex === activeDate.getDay())?.routineId 
@@ -92,6 +91,13 @@ function App() {
     ? allExercises.filter(ex => activeRoutine.elements?.some(el => el.exerciseId === ex.id))
     : allExercises;
 
+  // --- NEW LOGIC: CHECK IF ALL EXERCISES ARE COMPLETE ---
+  const allComplete = displayExercises && displayExercises.length > 0 && displayExercises.every(exercise => {
+      const target = activeRoutine?.elements?.find(el => el.exerciseId === exercise.id);
+      const setsDone = selectedDateSets?.filter(s => s.exerciseId === exercise.id).length || 0;
+      return target && setsDone >= target.targetSets;
+  });
+
   const pageVariants = { initial: { opacity: 0, x: -20 }, enter: { opacity: 1, x: 0 }, exit: { opacity: 0, x: 20 } };
 
   return (
@@ -101,10 +107,9 @@ function App() {
           {activeTab === 'workout' && (
             <motion.div key="workout" variants={pageVariants} initial="initial" animate="enter" exit="exit" className="pb-32">
               
-              {/* FIX: Increased top padding to 'pt-16' to clear the Notch/Dynamic Island */}
               <header className="px-4 pt-16 pb-4">
                 <div className="flex justify-between items-start">
-                    <h1 className="text-4xl font-black tracking-tighter text-white italic">IRON<span className="text-emerald-500">LOG</span></h1>
+                    <h1 className="text-4xl font-black tracking-tighter text-white italic">PULSE<span className="text-emerald-500">.</span></h1>
                     <button onClick={() => setShowSchedule(true)} className="flex flex-col items-center bg-zinc-900 border border-zinc-800 p-2 rounded-lg active:scale-95 transition-transform"><span className="text-xl">📅</span><span className="text-[9px] font-bold text-zinc-400 uppercase">Week</span></button>
                 </div>
                 
@@ -138,6 +143,22 @@ function App() {
 
               <DailyTracker customDate={activeDate} />
 
+              {/* --- NEW: COMPLETION BANNER --- */}
+              <AnimatePresence>
+                {allComplete && (
+                    <motion.div 
+                        initial={{ opacity: 0, y: 20, scale: 0.9 }} 
+                        animate={{ opacity: 1, y: 0, scale: 1 }} 
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="mx-4 mt-2 p-6 bg-gradient-to-br from-emerald-900/50 to-emerald-600/20 border border-emerald-500/30 rounded-3xl flex flex-col items-center text-center shadow-lg shadow-emerald-900/20 backdrop-blur-sm"
+                    >
+                        <div className="text-4xl mb-2 filter drop-shadow-lg">🎉</div>
+                        <h3 className="text-xl font-black text-white italic tracking-tighter">MISSION <span className="text-emerald-400">COMPLETE</span></h3>
+                        <p className="text-emerald-200/80 text-[10px] font-bold uppercase tracking-widest mt-1">Day Conquered. Good recovery.</p>
+                    </motion.div>
+                )}
+              </AnimatePresence>
+
               <div className="p-4 grid gap-3">
                 <button onClick={() => setIsBuilderOpen(true)} className="p-4 rounded-2xl border border-zinc-800 border-dashed text-zinc-500 flex items-center justify-center gap-2 hover:bg-zinc-900/50 transition-colors"><span className="text-xl font-bold">+</span><span className="font-bold text-sm">Add Custom Exercise</span></button>
 
@@ -147,11 +168,9 @@ function App() {
                         const setsDone = selectedDateSets?.filter(s => s.exerciseId === exercise.id).length || 0;
                         const isComplete = target && setsDone >= target.targetSets;
 
-                        // FIX: Added Logic for Cardio Speed AND Incline
                         let goalText = '';
                         if (target) {
                              if (exercise.category === 'cardio') {
-                                 // Safely access targetSpeed and Incline (targetWeight)
                                  const speed = (target as any).targetSpeed ? `@ ${(target as any).targetSpeed}km/h` : '';
                                  const incline = target.targetWeight > 0 ? `(Inc ${target.targetWeight})` : '';
                                  goalText = `Goal: ${target.targetReps} min ${speed} ${incline}`;

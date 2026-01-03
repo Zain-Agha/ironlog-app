@@ -4,17 +4,17 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     
-    <!-- COVERS THE NOTCH -->
+    <!-- COVERS THE NOTCH (iPhone 10 to 15) -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     
     <!-- iOS: TRANSPARENT STATUS BAR -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
-    <!-- ANDROID: MATCHES BACKGROUND -->
+    <!-- ANDROID: MATCHES STATUS BAR COLOR (So it's not a gray bar) -->
     <meta name="theme-color" content="#09090b" />
 
-    <title>Pulse</title> 
+    <title>IronLog</title>
     
     <style>
       html, body {
@@ -25,7 +25,9 @@
         width: 100%;
         overflow: hidden;
         -webkit-tap-highlight-color: transparent;
-        /* REMOVED THE AUTO-PADDING LINES HERE TO FIX THE JUMP */
+        /* ESSENTIAL: This uses the phone's native safe area logic */
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
       }
       #root {
         height: 100%;

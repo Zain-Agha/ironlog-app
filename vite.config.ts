@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  // 1. THIS IS THE MOST IMPORTANT LINE FOR GITHUB PAGES:
   base: '/ironlog-app/', 
 
   plugins: [
@@ -17,13 +18,15 @@ export default defineConfig({
       },
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
-        name: 'Pulse',       // <--- CHANGED
-        short_name: 'Pulse', // <--- CHANGED
+        name: 'IronLog',
+        short_name: 'IronLog',
         description: 'Offline-First Gym Tracker',
+        // theme_color: '#09090b', <--- REMOVED TO FIX IOS NOTCH BAR
         background_color: '#09090b',
         display: 'standalone',
         orientation: 'portrait',
         
+        // 2. UPDATED PWA SCOPES FOR GITHUB PAGES:
         scope: '/ironlog-app/',
         start_url: '/ironlog-app/',
         

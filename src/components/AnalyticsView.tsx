@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type SetLog } from '../db';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { 
   format, startOfMonth, endOfMonth, subMonths, addMonths, 
   startOfYear, endOfYear, subYears, addYears, 
@@ -70,11 +70,11 @@ export default function AnalyticsView() {
   const [viewMode, setViewMode] = useState<'month' | 'year'>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   
-  // NEW: State for Filtering
+  // State for Filtering
   const [selectedMuscle, setSelectedMuscle] = useState<string>('All');
   const [selectedExId, setSelectedExId] = useState<number | null>(null);
   
-  // NEW: State for Collapsible Logs
+  // State for Collapsible Logs
   const [showLogs, setShowLogs] = useState(false);
 
   const sets = useLiveQuery(() => db.sets.toArray());
@@ -153,7 +153,7 @@ export default function AnalyticsView() {
     return { calorieWins, proteinWins };
   }, [dailyLogs, currentRange, user]);
 
-  // --- BAR CHART LOGIC (Fixed for Avg Weight vs Avg Reps) ---
+  // --- LINE CHART LOGIC ---
   const chartData = useMemo(() => {
     if (!sets || !selectedExId) return [];
     
@@ -179,7 +179,12 @@ export default function AnalyticsView() {
             bucketSets = rangeSets.filter(s => s.timestamp >= mStart && s.timestamp <= mEnd);
         }
 
-        if (bucketSets.length === 0) return { date: format(bucketDate, viewMode === 'month' ? 'd' : 'MMM'), avgWeight: 0, avgReps: 0 };
+        // If no sets, return null for value so line breaks (or 0 if you prefer flat line)
+        if (bucketSets.length === 0) return { 
+            date: format(bucketDate, viewMode === 'month' ? 'd' : 'MMM'), 
+            avgWeight: null, 
+            avgReps: null 
+        };
 
         // Calculate Averages
         const totalWeight = bucketSets.reduce((sum, s) => sum + s.weight, 0);
@@ -187,7 +192,7 @@ export default function AnalyticsView() {
         
         return {
             date: format(bucketDate, viewMode === 'month' ? 'd' : 'MMM'),
-            avgWeight: Math.round((totalWeight / bucketSets.length) * 10) / 10, // Round to 1 decimal
+            avgWeight: Math.round((totalWeight / bucketSets.length) * 10) / 10, 
             avgReps: Math.round((totalReps / bucketSets.length) * 10) / 10
         };
     });
@@ -198,7 +203,7 @@ export default function AnalyticsView() {
   const plateau = useMemo(() => calculatePlateau(sets || [], selectedExId), [sets, selectedExId]);
   const selectedExercise = exercises?.find(e => e.id === selectedExId);
   const isCardio = selectedExercise?.category === 'cardio';
-  const unitLabel = isCardio ? 'km' : selectedExercise?.category === 'isometric' ? 'sec' : 'kg';
+  const unitLabel = isCardio ? 'km' : selectedExercise?.category === 'isometric' ? 'kg' : 'kg';
   const repLabel = isCardio ? 'min' : selectedExercise?.category === 'isometric' ? 'sec' : 'reps';
 
   // Navigation
@@ -281,7 +286,7 @@ export default function AnalyticsView() {
         </div>
       )}
 
-      {/* --- NEW CHART SECTION (Double Dropdown + Bar Chart) --- */}
+      {/* --- NEW LINE CHART SECTION --- */}
       <div className={`${glassCard} p-4 rounded-2xl h-96 flex flex-col border-cyan-500/10`}>
         
         {/* Dropdown 1: Muscle Group */}
@@ -310,18 +315,18 @@ export default function AnalyticsView() {
             </div>
         </div>
 
-        {/* Bar Chart */}
+        {/* Dual Axis Line Chart */}
         {chartData.length > 0 ? (
             <div className="flex-1 w-full -ml-4 mt-2">
                 <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData}>
+                    <LineChart data={chartData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
                         <XAxis dataKey="date" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} tickMargin={10} />
                         
-                        {/* Left Axis: Weight */}
+                        {/* Left Axis: Weight (Cyan) */}
                         <YAxis yAxisId="left" stroke="#22d3ee" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}`} />
                         
-                        {/* Right Axis: Reps */}
+                        {/* Right Axis: Reps (Purple) */}
                         <YAxis yAxisId="right" orientation="right" stroke="#c084fc" fontSize={10} tickLine={false} axisLine={false} />
                         
                         <Tooltip 
@@ -330,9 +335,9 @@ export default function AnalyticsView() {
                         />
                         <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
                         
-                        <Bar yAxisId="left" dataKey="avgWeight" name={`Avg ${unitLabel}`} fill="#22d3ee" radius={[4, 4, 0, 0]} barSize={10} />
-                        <Bar yAxisId="right" dataKey="avgReps" name={`Avg ${repLabel}`} fill="#c084fc" radius={[4, 4, 0, 0]} barSize={10} />
-                    </BarChart>
+                        <Line type="monotone" yAxisId="left" dataKey="avgWeight" name={`Avg ${unitLabel}`} stroke="#22d3ee" strokeWidth={3} dot={{ r: 4, fill: '#22d3ee', strokeWidth: 0 }} activeDot={{ r: 6 }} connectNulls={true} />
+                        <Line type="monotone" yAxisId="right" dataKey="avgReps" name={`Avg ${repLabel}`} stroke="#c084fc" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4, fill: '#c084fc', strokeWidth: 0 }} activeDot={{ r: 6 }} connectNulls={true} />
+                    </LineChart>
                 </ResponsiveContainer>
             </div>
         ) : (
