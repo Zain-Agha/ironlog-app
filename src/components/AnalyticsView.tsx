@@ -70,11 +70,11 @@ export default function AnalyticsView() {
   const [viewMode, setViewMode] = useState<'month' | 'year'>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   
-  // State for Filtering
+  // NEW: State for Filtering
   const [selectedMuscle, setSelectedMuscle] = useState<string>('All');
   const [selectedExId, setSelectedExId] = useState<number | null>(null);
   
-  // State for Collapsible Logs
+  // NEW: State for Collapsible Logs
   const [showLogs, setShowLogs] = useState(false);
 
   const sets = useLiveQuery(() => db.sets.toArray());
@@ -153,14 +153,14 @@ export default function AnalyticsView() {
     return { calorieWins, proteinWins };
   }, [dailyLogs, currentRange, user]);
 
-  // --- LINE CHART LOGIC ---
+  // --- DUAL AXIS CHART LOGIC ---
   const chartData = useMemo(() => {
     if (!sets || !selectedExId) return [];
     
     // Filter raw sets for the exercise and time range
     const rangeSets = sets.filter(s => s.exerciseId === selectedExId && s.timestamp >= currentRange.start.getTime() && s.timestamp <= currentRange.end.getTime());
     
-    // Define the buckets (Days for Month view, Months for Year view)
+    // Define the buckets
     let buckets: Date[] = [];
     if (viewMode === 'month') {
         buckets = eachDayOfInterval({ start: currentRange.start, end: currentRange.end });
@@ -169,7 +169,6 @@ export default function AnalyticsView() {
     }
 
     return buckets.map(bucketDate => {
-        // Find sets in this bucket
         let bucketSets: SetLog[] = [];
         if (viewMode === 'month') {
             bucketSets = rangeSets.filter(s => new Date(s.timestamp).toDateString() === bucketDate.toDateString());
@@ -179,7 +178,7 @@ export default function AnalyticsView() {
             bucketSets = rangeSets.filter(s => s.timestamp >= mStart && s.timestamp <= mEnd);
         }
 
-        // If no sets, return null for value so line breaks (or 0 if you prefer flat line)
+        // Return nulls to break the line on empty days
         if (bucketSets.length === 0) return { 
             date: format(bucketDate, viewMode === 'month' ? 'd' : 'MMM'), 
             avgWeight: null, 
@@ -271,6 +270,24 @@ export default function AnalyticsView() {
                 <span className="text-xs text-zinc-500 mb-1 font-bold">wins</span>
             </div>
         </div>
+
+        {/* SPLIT VOLUME CARD (PRESERVED) */}
+        <div className={`${glassCard} p-5 rounded-2xl col-span-2 flex justify-between items-center bg-gradient-to-r from-zinc-900/80 to-zinc-900/40`}>
+            <div className="flex-1 border-r border-zinc-700/50 pr-4">
+                <div className="text-[10px] uppercase font-bold text-zinc-500 flex items-center gap-2"><span>🏋️</span> Iron Moved</div>
+                <div className="text-2xl font-black text-white mt-1 flex items-end">
+                    {(currentStats.strengthVol / 1000).toFixed(1)}k <span className="text-xs text-zinc-600 ml-1 mb-1 font-bold">kg</span>
+                    <DeltaBadge current={currentStats.strengthVol} previous={prevStats.strengthVol} />
+                </div>
+            </div>
+            <div className="flex-1 pl-4">
+                <div className="text-[10px] uppercase font-bold text-zinc-500 flex items-center gap-2"><span>🏃</span> Cardio</div>
+                <div className="text-2xl font-black text-white mt-1 flex items-end">
+                    {currentStats.cardioDist.toFixed(1)} <span className="text-xs text-zinc-600 ml-1 mb-1 font-bold">km</span>
+                    <DeltaBadge current={currentStats.cardioDist} previous={prevStats.cardioDist} />
+                </div>
+            </div>
+        </div>
       </div>
 
       {/* PLATEAU ALERT */}
@@ -286,7 +303,7 @@ export default function AnalyticsView() {
         </div>
       )}
 
-      {/* --- NEW LINE CHART SECTION --- */}
+      {/* --- NEW DUAL AXIS LINE CHART SECTION --- */}
       <div className={`${glassCard} p-4 rounded-2xl h-96 flex flex-col border-cyan-500/10`}>
         
         {/* Dropdown 1: Muscle Group */}
