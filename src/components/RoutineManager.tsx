@@ -3,23 +3,30 @@ import { createPortal } from 'react-dom';
 import { db, type Exercise, type Routine, type RoutineElement } from '../db';
 import { useLiveQuery } from 'dexie-react-hooks';
 
-// --- EXTRACTED COMPONENT ---
+// --- EXTRACTED COMPONENT: EXERCISE PICKER ---
 const ExercisePicker = ({ 
   allExercises, 
+  initialValues, // NEW: Accepts existing values for editing
   onCancel, 
   onAdd 
 }: { 
   allExercises: Exercise[] | undefined; 
+  initialValues?: RoutineElement | null; // NEW
   onCancel: () => void; 
   onAdd: (exercise: Exercise, sets: number, reps: number, weight: number, speed?: number) => void;
 }) => {
-  const [step, setStep] = useState<'select' | 'configure' | 'create'>('select');
-  const [selectedEx, setSelectedEx] = useState<Exercise | null>(null);
+  const [step, setStep] = useState<'select' | 'configure' | 'create'>(initialValues ? 'configure' : 'select');
   
-  const [tSets, setTSets] = useState('1'); 
-  const [tReps, setTReps] = useState('10'); 
-  const [tWeight, setTWeight] = useState('0'); 
-  const [tSpeed, setTSpeed] = useState('0'); 
+  // Pre-fill if editing, otherwise null
+  const [selectedEx, setSelectedEx] = useState<Exercise | null>(
+    initialValues ? allExercises?.find(e => e.id === initialValues.exerciseId) || null : null
+  );
+  
+  // Pre-fill state or default
+  const [tSets, setTSets] = useState(initialValues ? String(initialValues.targetSets) : '1'); 
+  const [tReps, setTReps] = useState(initialValues ? String(initialValues.targetReps) : '10'); 
+  const [tWeight, setTWeight] = useState(initialValues ? String(initialValues.targetWeight) : '0'); 
+  const [tSpeed, setTSpeed] = useState(initialValues ? String((initialValues as any).targetSpeed || '0') : '0'); 
 
   const [newName, setNewName] = useState('');
   const [newCat, setNewCat] = useState<'strength' | 'cardio' | 'isometric'>('strength');
@@ -112,9 +119,12 @@ const ExercisePicker = ({
                   onClick={() => onAdd(selectedEx!, Number(tSets), Number(tReps), Number(tWeight), Number(tSpeed))}
                   className="w-full bg-green-500 text-black font-bold py-4 rounded-xl mt-4"
               >
-                  Add to Routine
+                  {initialValues ? 'Update Exercise' : 'Add to Routine'}
               </button>
-              <button onClick={() => setStep('select')} className="w-full text-zinc-500 py-4">Back</button>
+              <button onClick={() => { 
+                  // If editing, cancel goes back to form. If adding, cancel goes back to picker.
+                  initialValues ? onCancel() : setStep('select');
+              }} className="w-full text-zinc-500 py-4">Back</button>
           </div>
       </div>
   );
@@ -131,7 +141,9 @@ export default function RoutineManager({ onClose }: { onClose: () => void }) {
   
   const [rName, setRName] = useState('');
   const [rElements, setRElements] = useState<RoutineElement[]>([]);
+  
   const [showExPicker, setShowExPicker] = useState(false);
+  const [editingElementIndex, setEditingElementIndex] = useState<number | null>(null); // NEW: Track which row is being edited
 
   const handleSave = async () => {
     if (!rName) return alert("Routine name is required");
@@ -163,7 +175,14 @@ export default function RoutineManager({ onClose }: { onClose: () => void }) {
     setView('edit');
   };
 
-  const addExerciseToRoutine = (exercise: Exercise, sets: number, reps: number, weight: number, speed?: number) => {
+  // NEW: Opens picker in "Edit Mode"
+  const startEditExercise = (index: number) => {
+    setEditingElementIndex(index);
+    setShowExPicker(true);
+  };
+
+  // NEW: Handles both Adding and Updating
+  const handleExerciseSubmit = (exercise: Exercise, sets: number, reps: number, weight: number, speed?: number) => {
     const newElement: RoutineElement & { targetSpeed?: number } = {
         exerciseId: exercise.id!,
         targetSets: sets,
@@ -171,8 +190,20 @@ export default function RoutineManager({ onClose }: { onClose: () => void }) {
         targetWeight: weight,
         targetSpeed: speed
     };
-    setRElements([...rElements, newElement]);
+
+    if (editingElementIndex !== null) {
+        // UPDATE existing row
+        const updated = [...rElements];
+        updated[editingElementIndex] = newElement;
+        setRElements(updated);
+    } else {
+        // ADD new row
+        setRElements([...rElements, newElement]);
+    }
+    
+    // Reset state
     setShowExPicker(false);
+    setEditingElementIndex(null);
   };
 
   return createPortal(
@@ -231,17 +262,32 @@ export default function RoutineManager({ onClose }: { onClose: () => void }) {
                             }
 
                             return (
-                                <div key={idx} className="flex justify-between items-center bg-zinc-900/30 p-4 rounded-2xl border border-zinc-800/50">
+                                // NEW: Added onClick to the container div to trigger edit
+                                <div 
+                                    key={idx} 
+                                    onClick={() => startEditExercise(idx)}
+                                    className="flex justify-between items-center bg-zinc-900/30 p-4 rounded-2xl border border-zinc-800/50 active:bg-zinc-800 transition-colors cursor-pointer"
+                                >
                                     <div className="flex-1">
                                         <div className="text-zinc-200 font-bold">{exName}</div>
                                         <div className="text-[10px] text-zinc-500 font-bold uppercase mt-0.5 tracking-tight">{detailText}</div>
                                     </div>
-                                    <button onClick={() => setRElements(rElements.filter((_, i) => i !== idx))} className="ml-4 w-8 h-8 flex items-center justify-center bg-zinc-800 rounded-full text-zinc-500 text-xs font-bold hover:text-red-500 transition-colors">✕</button>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); setRElements(rElements.filter((_, i) => i !== idx)); }} 
+                                        className="ml-4 w-8 h-8 flex items-center justify-center bg-zinc-800 rounded-full text-zinc-500 text-xs font-bold hover:text-red-500 transition-colors"
+                                    >
+                                        ✕
+                                    </button>
                                 </div>
                             )
                         })}
                         
-                        <button onClick={() => setShowExPicker(true)} className="w-full py-4 border-2 border-zinc-800 border-dashed text-zinc-500 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-zinc-900/30 transition-colors">+ Add Exercise</button>
+                        <button 
+                            onClick={() => { setEditingElementIndex(null); setShowExPicker(true); }} 
+                            className="w-full py-4 border-2 border-zinc-800 border-dashed text-zinc-500 rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-zinc-900/30 transition-colors"
+                        >
+                            + Add Exercise
+                        </button>
                     </div>
                 </div>
             )}
@@ -260,8 +306,9 @@ export default function RoutineManager({ onClose }: { onClose: () => void }) {
         {showExPicker && (
             <ExercisePicker 
                 allExercises={allExercises}
-                onCancel={() => setShowExPicker(false)}
-                onAdd={addExerciseToRoutine}
+                initialValues={editingElementIndex !== null ? rElements[editingElementIndex] : null} // Pass existing data if editing
+                onCancel={() => { setShowExPicker(false); setEditingElementIndex(null); }}
+                onAdd={handleExerciseSubmit}
             />
         )}
     </div>,

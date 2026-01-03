@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type SetLog } from '../db';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { 
   format, startOfMonth, endOfMonth, subMonths, addMonths, 
   startOfYear, endOfYear, subYears, addYears, 
-  eachMonthOfInterval, subWeeks, getISOWeek
+  eachMonthOfInterval, subWeeks, getISOWeek, eachDayOfInterval
 } from 'date-fns';
 
 // --- PLATEAU DETECTOR LOGIC ---
@@ -69,7 +69,13 @@ const DeltaBadge = ({ current, previous }: { current: number, previous: number }
 export default function AnalyticsView() {
   const [viewMode, setViewMode] = useState<'month' | 'year'>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
+  
+  // NEW: State for Filtering
+  const [selectedMuscle, setSelectedMuscle] = useState<string>('All');
   const [selectedExId, setSelectedExId] = useState<number | null>(null);
+  
+  // NEW: State for Collapsible Logs
+  const [showLogs, setShowLogs] = useState(false);
 
   const sets = useLiveQuery(() => db.sets.toArray());
   const exercises = useLiveQuery(() => db.exercises.toArray());
@@ -88,6 +94,27 @@ export default function AnalyticsView() {
         }
     }
   };
+
+  // --- DERIVED LISTS FOR DROPDOWNS ---
+  const muscles = useMemo(() => {
+      if (!exercises) return ['All'];
+      const m = new Set(exercises.map(e => e.targetMuscle));
+      return ['All', ...Array.from(m).sort()];
+  }, [exercises]);
+
+  const filteredExercises = useMemo(() => {
+      if (!exercises) return [];
+      if (selectedMuscle === 'All') return exercises;
+      return exercises.filter(e => e.targetMuscle === selectedMuscle);
+  }, [exercises, selectedMuscle]);
+
+  // Set default exercise when list changes
+  useEffect(() => {
+      if (filteredExercises.length > 0 && (!selectedExId || !filteredExercises.find(e => e.id === selectedExId))) {
+          setSelectedExId(filteredExercises[0].id!);
+      }
+  }, [filteredExercises, selectedExId]);
+
 
   // --- DATES & RANGES ---
   const currentRange = useMemo(() => {
@@ -115,72 +142,74 @@ export default function AnalyticsView() {
     return calculateMetrics(sets, prevRange.start, prevRange.end, exercises);
   }, [sets, prevRange, exercises]);
 
-  // --- ADAPTIVE NUTRITION LOGIC ---
   const nutritionStats = useMemo(() => {
     if (!dailyLogs || !user) return { calorieWins: 0, proteinWins: 0 };
     const logsInPeriod = dailyLogs.filter(l => {
         const d = new Date(l.date);
         return d >= currentRange.start && d <= currentRange.end;
     });
-
-    const calorieWins = logsInPeriod.filter(l => {
-        if (user.goal === 'loss') {
-            return l.calories > 0 && l.calories <= user.dailyCalorieTarget; 
-        }
-        return l.calories >= user.dailyCalorieTarget; 
-    }).length;
-
+    const calorieWins = logsInPeriod.filter(l => user.goal === 'loss' ? (l.calories > 0 && l.calories <= user.dailyCalorieTarget) : (l.calories >= user.dailyCalorieTarget)).length;
     const proteinWins = logsInPeriod.filter(l => l.protein >= user.dailyProteinTarget).length;
-
     return { calorieWins, proteinWins };
   }, [dailyLogs, currentRange, user]);
 
-  // --- CHART LOGIC ---
+  // --- BAR CHART LOGIC (Fixed for Avg Weight vs Avg Reps) ---
   const chartData = useMemo(() => {
     if (!sets || !selectedExId) return [];
+    
+    // Filter raw sets for the exercise and time range
     const rangeSets = sets.filter(s => s.exerciseId === selectedExId && s.timestamp >= currentRange.start.getTime() && s.timestamp <= currentRange.end.getTime());
-    const dataMap = new Map<string, number>();
-
+    
+    // Define the buckets (Days for Month view, Months for Year view)
+    let buckets: Date[] = [];
     if (viewMode === 'month') {
-        rangeSets.forEach(set => {
-            const dateStr = format(set.timestamp, 'd MMM');
-            const current = dataMap.get(dateStr) || 0;
-            const metric = set.weight > 0 ? set.weight : set.reps; 
-            if (metric > current) dataMap.set(dateStr, metric);
-        });
-        return Array.from(dataMap.entries()).map(([date, value]) => ({ date, value }));
+        buckets = eachDayOfInterval({ start: currentRange.start, end: currentRange.end });
     } else {
-        const months = eachMonthOfInterval({ start: currentRange.start, end: currentRange.end });
-        return months.map(month => {
-            const mStart = startOfMonth(month).getTime();
-            const mEnd = endOfMonth(month).getTime();
-            const mSets = rangeSets.filter(s => s.timestamp >= mStart && s.timestamp <= mEnd);
-            let maxMetric = 0;
-            mSets.forEach(s => {
-                const metric = s.weight > 0 ? s.weight : s.reps;
-                if (metric > maxMetric) maxMetric = metric;
-            });
-            return { date: format(month, 'MMM'), value: maxMetric > 0 ? maxMetric : null };
-        });
+        buckets = eachMonthOfInterval({ start: currentRange.start, end: currentRange.end });
     }
+
+    return buckets.map(bucketDate => {
+        // Find sets in this bucket
+        let bucketSets: SetLog[] = [];
+        if (viewMode === 'month') {
+            bucketSets = rangeSets.filter(s => new Date(s.timestamp).toDateString() === bucketDate.toDateString());
+        } else {
+            const mStart = startOfMonth(bucketDate).getTime();
+            const mEnd = endOfMonth(bucketDate).getTime();
+            bucketSets = rangeSets.filter(s => s.timestamp >= mStart && s.timestamp <= mEnd);
+        }
+
+        if (bucketSets.length === 0) return { date: format(bucketDate, viewMode === 'month' ? 'd' : 'MMM'), avgWeight: 0, avgReps: 0 };
+
+        // Calculate Averages
+        const totalWeight = bucketSets.reduce((sum, s) => sum + s.weight, 0);
+        const totalReps = bucketSets.reduce((sum, s) => sum + s.reps, 0);
+        
+        return {
+            date: format(bucketDate, viewMode === 'month' ? 'd' : 'MMM'),
+            avgWeight: Math.round((totalWeight / bucketSets.length) * 10) / 10, // Round to 1 decimal
+            avgReps: Math.round((totalReps / bucketSets.length) * 10) / 10
+        };
+    });
   }, [sets, selectedExId, currentRange, viewMode]);
 
   if (!selectedExId && exercises && exercises.length > 0) setSelectedExId(exercises[0].id!);
+  
   const plateau = useMemo(() => calculatePlateau(sets || [], selectedExId), [sets, selectedExId]);
   const selectedExercise = exercises?.find(e => e.id === selectedExId);
-  const unitLabel = selectedExercise?.category === 'cardio' ? 'km' : selectedExercise?.category === 'isometric' ? 'sec' : 'kg';
+  const isCardio = selectedExercise?.category === 'cardio';
+  const unitLabel = isCardio ? 'km' : selectedExercise?.category === 'isometric' ? 'sec' : 'kg';
+  const repLabel = isCardio ? 'min' : selectedExercise?.category === 'isometric' ? 'sec' : 'reps';
 
   // Navigation
   const handlePrev = () => setCurrentDate(viewMode === 'month' ? subMonths(currentDate, 1) : subYears(currentDate, 1));
   const handleNext = () => setCurrentDate(viewMode === 'month' ? addMonths(currentDate, 1) : addYears(currentDate, 1));
 
-  // --- THEME CONSTANTS ---
   const glassCard = "bg-zinc-900/60 backdrop-blur-md border border-cyan-900/20 shadow-lg shadow-cyan-900/5";
   const activeBtn = "bg-cyan-500/10 text-cyan-400 border-cyan-500/20 shadow-[0_0_10px_rgba(34,211,238,0.15)]";
   const inactiveBtn = "text-zinc-500 hover:text-zinc-300";
 
   return (
-    // FIX: CHANGED from 'p-4' to 'p-4 pt-16' to clear Dynamic Island/Notch
     <div className="p-4 pt-16 space-y-6 pb-32">
       {/* HEADER & TOGGLE */}
       <header className="flex flex-col gap-4 pt-4">
@@ -222,43 +251,19 @@ export default function AnalyticsView() {
             </div>
         </div>
 
-        {/* CALORIE CARD (Adaptive) */}
+        {/* CALORIE & PROTEIN CARDS (Combined row) */}
         <div className={`${glassCard} p-4 rounded-2xl col-span-1`}>
             <div className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Calorie Target</div>
             <div className="flex items-end gap-1 mt-1">
                 <span className="text-3xl font-black text-white">{nutritionStats.calorieWins}</span>
                 <span className="text-xs text-zinc-500 mb-1 font-bold">wins</span>
             </div>
-            <div className="mt-2 text-[10px] text-zinc-600 truncate border-t border-white/5 pt-2">
-                Mode: <span className="text-emerald-400 font-bold uppercase">{user?.goal}</span>
-            </div>
         </div>
-
-        {/* PROTEIN CARD */}
         <div className={`${glassCard} p-4 rounded-2xl col-span-1`}>
             <div className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Protein Target</div>
             <div className="flex items-end gap-1 mt-1">
                 <span className="text-3xl font-black text-white">{nutritionStats.proteinWins}</span>
                 <span className="text-xs text-zinc-500 mb-1 font-bold">wins</span>
-            </div>
-            <div className="mt-2 text-[10px] text-zinc-600 border-t border-white/5 pt-2">Hit {user?.dailyProteinTarget}g Floor</div>
-        </div>
-
-        {/* SPLIT VOLUME CARD */}
-        <div className={`${glassCard} p-5 rounded-2xl col-span-2 flex justify-between items-center bg-gradient-to-r from-zinc-900/80 to-zinc-900/40`}>
-            <div className="flex-1 border-r border-zinc-700/50 pr-4">
-                <div className="text-[10px] uppercase font-bold text-zinc-500 flex items-center gap-2"><span>🏋️</span> Iron Moved</div>
-                <div className="text-2xl font-black text-white mt-1 flex items-end">
-                    {(currentStats.strengthVol / 1000).toFixed(1)}k <span className="text-xs text-zinc-600 ml-1 mb-1 font-bold">kg</span>
-                    <DeltaBadge current={currentStats.strengthVol} previous={prevStats.strengthVol} />
-                </div>
-            </div>
-            <div className="flex-1 pl-4">
-                <div className="text-[10px] uppercase font-bold text-zinc-500 flex items-center gap-2"><span>🏃</span> Cardio</div>
-                <div className="text-2xl font-black text-white mt-1 flex items-end">
-                    {currentStats.cardioDist.toFixed(1)} <span className="text-xs text-zinc-600 ml-1 mb-1 font-bold">km</span>
-                    <DeltaBadge current={currentStats.cardioDist} previous={prevStats.cardioDist} />
-                </div>
             </div>
         </div>
       </div>
@@ -271,45 +276,63 @@ export default function AnalyticsView() {
                 <h4 className="font-bold text-orange-400 text-sm uppercase tracking-tighter">Plateau Detected</h4>
                 <p className="text-xs text-orange-200/80 mt-1 leading-relaxed">
                     Your <b>{selectedExercise?.name}</b> hasn't increased in {plateau.duration} weeks.
-                    Time to change reps or increase volume?
                 </p>
             </div>
         </div>
       )}
 
-      {/* CHART */}
-      <div className={`${glassCard} p-4 rounded-2xl h-80 flex flex-col border-cyan-500/10`}>
-        <div className="flex justify-between items-center mb-6">
-            <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-widest flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#22d3ee]" />
-                {viewMode} Trend
-            </h3>
-            <select className="bg-black text-white text-xs font-bold p-2 rounded-lg border border-zinc-800 outline-none max-w-[150px] focus:border-cyan-500/50" onChange={(e) => setSelectedExId(Number(e.target.value))} value={selectedExId || ''}>
-                {exercises?.map(ex => (<option key={ex.id} value={ex.id}>{ex.name}</option>))}
-            </select>
+      {/* --- NEW CHART SECTION (Double Dropdown + Bar Chart) --- */}
+      <div className={`${glassCard} p-4 rounded-2xl h-96 flex flex-col border-cyan-500/10`}>
+        
+        {/* Dropdown 1: Muscle Group */}
+        <div className="flex gap-2 mb-2">
+            <div className="flex-1">
+                <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Target Muscle</label>
+                <select 
+                    className="w-full bg-black text-white text-xs font-bold p-2 rounded-lg border border-zinc-800 outline-none focus:border-cyan-500/50"
+                    value={selectedMuscle}
+                    onChange={(e) => setSelectedMuscle(e.target.value)}
+                >
+                    {muscles.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+            </div>
+            
+            {/* Dropdown 2: Exercises (Filtered) */}
+            <div className="flex-[2]">
+                <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Exercise</label>
+                <select 
+                    className="w-full bg-black text-white text-xs font-bold p-2 rounded-lg border border-zinc-800 outline-none focus:border-cyan-500/50"
+                    onChange={(e) => setSelectedExId(Number(e.target.value))} 
+                    value={selectedExId || ''}
+                >
+                    {filteredExercises.map(ex => (<option key={ex.id} value={ex.id}>{ex.name}</option>))}
+                </select>
+            </div>
         </div>
+
+        {/* Bar Chart */}
         {chartData.length > 0 ? (
-            <div className="flex-1 w-full -ml-4">
+            <div className="flex-1 w-full -ml-4 mt-2">
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData}>
-                        <defs>
-                            <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.4}/>
-                                <stop offset="95%" stopColor="#22d3ee" stopOpacity={0}/>
-                            </linearGradient>
-                        </defs>
+                    <BarChart data={chartData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                        <XAxis dataKey="date" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} tickMargin={10} interval={viewMode === 'year' ? 0 : 'preserveStartEnd'} />
-                        <YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} domain={['auto', 'auto']} tickFormatter={(value) => `${value}`} />
+                        <XAxis dataKey="date" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} tickMargin={10} />
+                        
+                        {/* Left Axis: Weight */}
+                        <YAxis yAxisId="left" stroke="#22d3ee" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}`} />
+                        
+                        {/* Right Axis: Reps */}
+                        <YAxis yAxisId="right" orientation="right" stroke="#c084fc" fontSize={10} tickLine={false} axisLine={false} />
+                        
                         <Tooltip 
-                            contentStyle={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', color: '#fff', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)' }} 
-                            itemStyle={{ color: '#22d3ee', fontWeight: 'bold', fontSize: '12px' }} 
-                            formatter={(value: any) => [`${value} ${unitLabel}`, viewMode === 'month' ? 'Best' : 'Peak']} 
-                            labelStyle={{ color: '#a1a1aa', marginBottom: '4px', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '1px' }}
-                            cursor={{ stroke: '#22d3ee', strokeWidth: 1, strokeDasharray: '4 4' }}
+                            contentStyle={{ backgroundColor: '#09090b', border: '1px solid #27272a', borderRadius: '12px', color: '#fff' }} 
+                            labelStyle={{ color: '#a1a1aa', fontSize: '10px', textTransform: 'uppercase' }}
                         />
-                        <Area type="monotone" dataKey="value" stroke="#22d3ee" strokeWidth={3} fillOpacity={1} fill="url(#colorValue)" connectNulls={true} activeDot={{ r: 6, strokeWidth: 0, fill: '#fff', stroke: '#22d3ee' }} />
-                    </AreaChart>
+                        <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
+                        
+                        <Bar yAxisId="left" dataKey="avgWeight" name={`Avg ${unitLabel}`} fill="#22d3ee" radius={[4, 4, 0, 0]} barSize={10} />
+                        <Bar yAxisId="right" dataKey="avgReps" name={`Avg ${repLabel}`} fill="#c084fc" radius={[4, 4, 0, 0]} barSize={10} />
+                    </BarChart>
                 </ResponsiveContainer>
             </div>
         ) : (
@@ -317,38 +340,49 @@ export default function AnalyticsView() {
         )}
       </div>
 
-      {/* LOGS with DELETE FUNCTIONALITY */}
+      {/* --- COLLAPSIBLE LOGS SECTION --- */}
       <div className="space-y-3">
-        <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest pl-1">Recent Logs</h3>
-        {(sets || []).filter(s => s.timestamp >= currentRange.start.getTime() && s.timestamp <= currentRange.end.getTime()).reverse().slice(0, 10).map(set => {
-            const ex = exercises?.find(e => e.id === set.exerciseId);
-            const isCardio = ex?.category === 'cardio';
-            const isIso = ex?.category === 'isometric';
-            return (
-                <div key={set.id} className={`flex justify-between items-center p-4 rounded-xl ${glassCard} border-white/5 hover:border-cyan-500/20 transition-colors group relative pr-12`}>
-                    <div>
-                        <div className="text-sm font-bold text-white">{ex?.name || 'Unknown'}</div>
-                        <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">{new Date(set.timestamp).toDateString().slice(0, 10)}</div>
-                    </div>
-                    <div className="text-right">
-                        <div className="text-lg font-black text-cyan-400">
-                            {set.weight > 0 ? set.weight : (isCardio ? '0' : 'BW')} 
-                            <span className="text-zinc-500 text-xs font-bold ml-1">{isCardio ? 'km' : (set.weight > 0 ? 'kg' : '')}</span>
-                        </div>
-                        <div className="text-[10px] text-zinc-400 font-bold">{set.reps} {isCardio ? 'min' : isIso ? 'sec' : 'reps'}</div>
-                    </div>
+        <button 
+            onClick={() => setShowLogs(!showLogs)} 
+            className="w-full flex justify-between items-center bg-zinc-900/40 p-4 rounded-xl border border-zinc-800 active:scale-[0.98] transition-all"
+        >
+            <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Recent Logs History</h3>
+            <span className="text-zinc-500 text-xs font-bold">{showLogs ? 'Hide ▲' : 'Show ▼'}</span>
+        </button>
 
-                    {/* DELETE BUTTON (Absolute Positioned) */}
-                    <button 
-                        onClick={() => handleDeleteSet(set.id!)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-zinc-800/50 hover:bg-red-900/50 text-zinc-500 hover:text-red-500 rounded-lg transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                        title="Delete Log"
-                    >
-                        <span className="text-xs font-bold">✕</span>
-                    </button>
-                </div>
-            )
-        })}
+        {showLogs && (
+            <div className="space-y-3 animate-in slide-in-from-top-4 fade-in duration-300">
+                {(sets || []).filter(s => s.timestamp >= currentRange.start.getTime() && s.timestamp <= currentRange.end.getTime()).reverse().map(set => {
+                    const ex = exercises?.find(e => e.id === set.exerciseId);
+                    const isCardio = ex?.category === 'cardio';
+                    const isIso = ex?.category === 'isometric';
+                    return (
+                        <div key={set.id} className={`flex justify-between items-center p-4 rounded-xl ${glassCard} border-white/5 hover:border-cyan-500/20 transition-colors group relative pr-12`}>
+                            <div>
+                                <div className="text-sm font-bold text-white">{ex?.name || 'Unknown'}</div>
+                                <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">{new Date(set.timestamp).toDateString().slice(0, 10)}</div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-lg font-black text-cyan-400">
+                                    {set.weight > 0 ? set.weight : (isCardio ? '0' : 'BW')} 
+                                    <span className="text-zinc-500 text-xs font-bold ml-1">{isCardio ? 'km' : (set.weight > 0 ? 'kg' : '')}</span>
+                                </div>
+                                <div className="text-[10px] text-zinc-400 font-bold">{set.reps} {isCardio ? 'min' : isIso ? 'sec' : 'reps'}</div>
+                            </div>
+
+                            <button 
+                                onClick={() => handleDeleteSet(set.id!)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 bg-zinc-800/50 hover:bg-red-900/50 text-zinc-500 hover:text-red-500 rounded-lg transition-all opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                                title="Delete Log"
+                            >
+                                <span className="text-xs font-bold">✕</span>
+                            </button>
+                        </div>
+                    )
+                })}
+                {(!sets || sets.length === 0) && <div className="text-center text-zinc-600 text-xs py-4">No logs found for this period.</div>}
+            </div>
+        )}
       </div>
     </div>
   );
