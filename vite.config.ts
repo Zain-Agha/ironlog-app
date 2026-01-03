@@ -18,8 +18,8 @@ export default defineConfig({
       },
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
-        name: 'IronLog',
-        short_name: 'IronLog',
+        name: 'Pulse',
+        short_name: 'Pulse',
         description: 'Offline-First Gym Tracker',
         // theme_color: '#09090b', <--- REMOVED TO FIX IOS NOTCH BAR
         background_color: '#09090b',
